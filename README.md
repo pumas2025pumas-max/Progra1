@@ -103,3 +103,12 @@ Desarrollar una billetera virtual de consola en Python que permita administrar u
 - Bitácora `.log` con eventos relevantes.
 - Documentación (README + memoria en DOCX basada en este plan).
 - Capturas o registros de ejecución (opcional para la presentación).
+
+## 13. Ejecución
+1. Crear y activar un entorno virtual (opcional) con Python 3.11 o superior.
+2. Ejecutar el programa principal desde la terminal:
+   ```bash
+   python main.py
+   ```
+3. Desde el menú inicial es posible registrar un usuario nuevo o ingresar con credenciales ya existentes. Toda la información se persiste en la carpeta `data/` y los reportes en `reports/`.
+4. El archivo `logs/bitacora.log` almacena cada acción relevante realizada por el usuario autenticado.
