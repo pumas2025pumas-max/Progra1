@@ -1,102 +1,102 @@
-"""Programa principal de la billetera virtual Kiwillet."""
-from __future__ import annotations
+"""Programa sencillo de billetera virtual."""
 
-from typing import Dict, List, Optional
+import datetime
 
-from io_archivos import asegurar_estructura_directorios
-from logger import registrar_evento
-from movimientos import cargar_movimientos, generar_reporte, registrar_movimiento
-from servicios import cargar_servicios, obtener_servicio
-from tarjetas import agregar_tarjeta, cargar_tarjetas, eliminar_tarjeta, obtener_tarjeta
-from usuarios import (
-    Usuario,
-    autenticar_usuario,
-    cargar_usuarios,
-    cambiar_contrasena,
-    crear_usuario,
-    actualizar_saldo,
-)
-
-usuarios_globales: Dict[str, Usuario] = {}
-
-MENU_PRINCIPAL = """
-====== KIWILLET ======
-1. Gestionar tarjetas
-2. Pagar servicios
-3. Modificar cuenta
-4. Ingresar dinero
-5. Ver reportes
-6. Salir
-Seleccione una opción: """
-
-MENU_TARJETAS = """
--- Tarjetas --
-1. Listar tarjetas
-2. Agregar tarjeta
-3. Eliminar tarjeta
-4. Volver
-Seleccione una opción: """
-
-MENU_REPORTES = """
--- Reportes --
-1. Mostrar estadísticas en pantalla
-2. Exportar reporte CSV
-3. Volver
-Seleccione una opción: """
+import helpers
 
 
-def pausar() -> None:
+def pausar():
     input("Presione ENTER para continuar...")
 
 
-def solicitar_opcion(mensaje: str) -> str:
-    return input(mensaje).strip()
+def mostrar_menu():
+    print("\n===== KIWILLET =====")
+    print("1. Ver saldo")
+    print("2. Ingresar dinero")
+    print("3. Gestionar tarjetas")
+    print("4. Pagar servicio")
+    print("5. Ver movimientos")
+    print("6. Cambiar contraseña")
+    print("7. Salir")
+    return input("Opción: ").strip()
 
 
-def mostrar_tarjetas(tarjetas: List[Dict[str, str]]) -> None:
-    if not tarjetas:
-        print("No hay tarjetas registradas.")
-        return
-    print("Tarjetas registradas:")
-    for tarjeta in tarjetas:
-        numero = tarjeta.get("numero", "")
-        numero_visible = "****" + numero[-4:] if len(numero) >= 4 else numero
-        print(
-            f"ID: {tarjeta.get('id','')} | Tipo: {tarjeta.get('tipo','')} | "
-            f"Entidad: {tarjeta.get('entidad','')} | Número: {numero_visible} | "
-            f"Vencimiento: {tarjeta.get('vencimiento','')}"
-        )
+def mostrar_menu_tarjetas():
+    print("\n--- Tarjetas ---")
+    print("1. Listar tarjetas")
+    print("2. Agregar tarjeta")
+    print("3. Eliminar tarjeta")
+    print("4. Volver")
+    return input("Opción: ").strip()
 
 
-def flujo_tarjetas(usuario: Usuario, tarjetas_usuario: List[Dict[str, str]]) -> None:
+def iniciar_sesion(usuarios):
     while True:
-        opcion = solicitar_opcion(MENU_TARJETAS)
+        print("\n1. Iniciar sesión")
+        print("2. Crear cuenta")
+        print("3. Salir")
+        opcion = input("Seleccione: ").strip()
+        if opcion == "1":
+            nombre = input("Usuario: ").strip()
+            clave = input("Contraseña: ").strip()
+            datos = usuarios.get(nombre)
+            if datos and datos.get("clave") == clave:
+                print("Bienvenido", nombre)
+                return nombre
+            print("Datos incorrectos.")
+        elif opcion == "2":
+            nombre = input("Nuevo usuario: ").strip()
+            if not nombre:
+                print("Ingrese un nombre válido.")
+                continue
+            if nombre in usuarios:
+                print("El usuario ya existe.")
+                continue
+            clave = input("Contraseña: ").strip()
+            usuarios[nombre] = {"clave": clave, "saldo": 0.0}
+            helpers.guardar_usuarios(usuarios)
+            print("Usuario creado. Ingrese nuevamente para continuar.")
+        elif opcion == "3":
+            return None
+        else:
+            print("Opción inválida.")
+
+
+def mostrar_tarjetas(tarjetas_usuario):
+    if not tarjetas_usuario:
+        print("No hay tarjetas cargadas.")
+        return
+    for tarjeta in tarjetas_usuario:
+        alias = tarjeta.get("alias", "")
+        numero = helpers.mascara_tarjeta(tarjeta.get("numero", ""))
+        tipo = tarjeta.get("tipo", "")
+        vencimiento = tarjeta.get("vencimiento", "")
+        print(f"Alias: {alias} | Número: {numero} | Tipo: {tipo} | Vence: {vencimiento}")
+
+
+def flujo_tarjetas(tarjetas, usuario):
+    while True:
+        opcion = mostrar_menu_tarjetas()
+        tarjetas_usuario = helpers.obtener_tarjetas_usuario(tarjetas, usuario)
         if opcion == "1":
             mostrar_tarjetas(tarjetas_usuario)
             pausar()
         elif opcion == "2":
-            tarjeta_id = input("Ingrese ID de la tarjeta: ").strip()
-            tipo = input("Tipo (crédito/débito): ").strip()
-            entidad = input("Entidad emisora: ").strip()
-            numero = input("Número (solo últimos dígitos visibles): ").strip()
+            alias = input("Alias de la tarjeta: ").strip()
+            numero = input("Número: ").strip()
+            tipo = input("Tipo: ").strip()
             vencimiento = input("Vencimiento (MM/AA): ").strip()
-            if agregar_tarjeta(usuario.nombre, tarjetas_usuario, {
-                "id": tarjeta_id,
-                "tipo": tipo,
-                "entidad": entidad,
-                "numero": numero,
-                "vencimiento": vencimiento,
-            }):
-                print("Tarjeta agregada correctamente.")
+            if helpers.agregar_tarjeta(tarjetas, usuario, alias, numero, tipo, vencimiento):
+                print("Tarjeta agregada.")
             else:
-                print("Ya existe una tarjeta con ese ID.")
+                print("Ya existe una tarjeta con ese alias.")
             pausar()
         elif opcion == "3":
-            tarjeta_id = input("Ingrese el ID de la tarjeta a eliminar: ").strip()
-            if eliminar_tarjeta(usuario.nombre, tarjetas_usuario, tarjeta_id):
+            alias = input("Alias a eliminar: ").strip()
+            if helpers.eliminar_tarjeta(tarjetas, usuario, alias):
                 print("Tarjeta eliminada.")
             else:
-                print("No se encontró la tarjeta indicada.")
+                print("No se encontró la tarjeta.")
             pausar()
         elif opcion == "4":
             break
@@ -104,180 +104,154 @@ def flujo_tarjetas(usuario: Usuario, tarjetas_usuario: List[Dict[str, str]]) -> 
             print("Opción inválida.")
 
 
-def seleccionar_tarjeta(usuario: Usuario, tarjetas_usuario: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
-    if not tarjetas_usuario:
-        print("Debe registrar al menos una tarjeta antes de operar.")
-        return None
-    mostrar_tarjetas(tarjetas_usuario)
-    tarjeta_id = input("Seleccione el ID de la tarjeta a utilizar: ").strip()
-    tarjeta = obtener_tarjeta(tarjetas_usuario, tarjeta_id)
-    if tarjeta is None:
-        print("Tarjeta no encontrada.")
-        return None
-    return tarjeta
-
-
-def flujo_pago_servicios(usuario: Usuario, tarjetas_usuario: List[Dict[str, str]], movimientos_usuario: List[Dict[str, str]], servicios: List[Dict[str, str]]) -> None:
-    if not servicios:
-        print("No hay servicios cargados.")
-        return
-    tarjeta = seleccionar_tarjeta(usuario, tarjetas_usuario)
-    if tarjeta is None:
-        pausar()
-        return
-    print("Servicios disponibles:")
-    for servicio in servicios:
-        print(
-            f"ID: {servicio.get('id','')} | {servicio.get('nombre','')} - {servicio.get('categoria','')} | "
-            f"Monto sugerido: ${servicio.get('monto','0')}"
-        )
-    servicio_id = input("Ingrese ID del servicio a pagar: ").strip()
-    servicio = obtener_servicio(servicios, servicio_id)
-    if servicio is None:
-        print("Servicio no encontrado.")
-        pausar()
-        return
-    monto = input("Ingrese monto a pagar (ENTER para monto sugerido): ").strip()
-    monto_float = float(servicio.get("monto", "0")) if not monto else float(monto)
-    if monto_float > usuario.saldo:
-        print("Saldo insuficiente, realice una recarga.")
-        pausar()
-        return
-    usuario.saldo -= monto_float
-    registrar_movimiento(
-        usuario.nombre,
-        movimientos_usuario,
-        "Pago servicio",
-        servicio.get("nombre", "Servicio"),
-        monto_float,
-        usuario.saldo,
-    )
-    actualizar_saldo(usuarios_globales, usuario.nombre, usuario.saldo)
-    registrar_evento("pago_servicio", f"{usuario.nombre}:{servicio.get('nombre','')}:{monto_float:.2f}")
-    print(f"Pago registrado. Saldo restante: ${usuario.saldo:.2f}")
-    pausar()
-
-
-def flujo_cambio_password(usuario: Usuario) -> None:
-    nueva = input("Ingrese la nueva contraseña: ").strip()
-    if not nueva:
-        print("La contraseña no puede ser vacía.")
-        return
-    if cambiar_contrasena(usuarios_globales, usuario.nombre, nueva):
-        print("Contraseña actualizada.")
-    else:
-        print("No se pudo actualizar la contraseña.")
-
-
-def flujo_ingreso_dinero(usuario: Usuario, movimientos_usuario: List[Dict[str, str]]) -> None:
-    monto = input("Ingrese el monto a acreditar: ").strip()
+def ingresar_dinero(usuarios, movimientos, usuario):
+    monto = input("Monto a ingresar: ").strip()
     try:
-        monto_float = float(monto)
+        valor = float(monto)
     except ValueError:
         print("Monto inválido.")
         return
-    if monto_float <= 0:
+    if valor <= 0:
         print("El monto debe ser positivo.")
         return
-    usuario.saldo += monto_float
-    registrar_movimiento(
-        usuario.nombre,
-        movimientos_usuario,
-        "Ingreso",
-        "Carga de saldo",
-        monto_float,
-        usuario.saldo,
+    usuarios[usuario]["saldo"] += valor
+    helpers.guardar_usuarios(usuarios)
+    fecha = datetime.date.today().strftime("%d/%m/%Y")
+    saldo_actual = helpers.formatear_monto(usuarios[usuario]["saldo"])
+    helpers.registrar_movimiento(
+        movimientos,
+        usuario,
+        fecha,
+        "Ingreso de dinero",
+        helpers.formatear_monto(valor),
+        saldo_actual,
     )
-    actualizar_saldo(usuarios_globales, usuario.nombre, usuario.saldo)
-    registrar_evento("ingreso_saldo", f"{usuario.nombre}:{monto_float:.2f}")
-    print(f"Saldo actualizado: ${usuario.saldo:.2f}")
+    print("Saldo actualizado:", saldo_actual)
 
 
-def flujo_reportes(usuario: Usuario, movimientos_usuario: List[Dict[str, str]]) -> None:
-    from movimientos import calcular_estadisticas
-
-    while True:
-        opcion = solicitar_opcion(MENU_REPORTES)
-        if opcion == "1":
-            estadisticas = calcular_estadisticas(movimientos_usuario)
-            print("Estadísticas actuales:")
-            for clave, valor in estadisticas.items():
-                if isinstance(valor, float):
-                    print(f"- {clave.replace('_', ' ').title()}: {valor:.2f}")
-                else:
-                    print(f"- {clave.replace('_', ' ').title()}: {valor}")
-            pausar()
-        elif opcion == "2":
-            ruta = generar_reporte(usuario.nombre, movimientos_usuario)
-            print(f"Reporte exportado en: {ruta}")
-            pausar()
-        elif opcion == "3":
+def pagar_servicio(usuarios, tarjetas, servicios, movimientos, usuario):
+    tarjetas_usuario = helpers.obtener_tarjetas_usuario(tarjetas, usuario)
+    if not tarjetas_usuario:
+        print("Debe registrar al menos una tarjeta.")
+        return
+    print("Tarjetas disponibles:")
+    for tarjeta in tarjetas_usuario:
+        print("-", tarjeta.get("alias", ""))
+    alias = input("Seleccione tarjeta por alias: ").strip()
+    tarjeta_elegida = None
+    for tarjeta in tarjetas_usuario:
+        if tarjeta.get("alias") == alias:
+            tarjeta_elegida = tarjeta
             break
-        else:
-            print("Opción inválida.")
+    if tarjeta_elegida is None:
+        print("Tarjeta no encontrada.")
+        return
+    print("Servicios disponibles:")
+    for servicio in servicios:
+        codigo = servicio.get("codigo", "")
+        nombre = servicio.get("nombre", "")
+        monto = helpers.formatear_monto(servicio.get("monto", "0"))
+        print(f"{codigo} - {nombre} ({monto})")
+    codigo = input("Código del servicio: ").strip()
+    servicio = helpers.buscar_servicio(servicios, codigo)
+    if servicio is None:
+        print("Servicio inexistente.")
+        return
+    monto_str = input("Monto a pagar (ENTER para sugerido): ").strip()
+    if monto_str:
+        try:
+            monto = float(monto_str)
+        except ValueError:
+            print("Monto inválido.")
+            return
+    else:
+        try:
+            monto = float(servicio.get("monto", "0"))
+        except ValueError:
+            monto = 0.0
+    saldo_actual = usuarios[usuario]["saldo"]
+    if monto > saldo_actual:
+        print("Saldo insuficiente.")
+        return
+    usuarios[usuario]["saldo"] = saldo_actual - monto
+    helpers.guardar_usuarios(usuarios)
+    fecha = datetime.date.today().strftime("%d/%m/%Y")
+    helpers.registrar_movimiento(
+        movimientos,
+        usuario,
+        fecha,
+        f"Pago {servicio.get('nombre', '')}",
+        helpers.formatear_monto(monto),
+        helpers.formatear_monto(usuarios[usuario]["saldo"]),
+    )
+    print("Pago realizado con la tarjeta", alias)
+    print("Saldo actual:", helpers.formatear_monto(usuarios[usuario]["saldo"]))
 
 
-def menu_principal(usuario: Usuario, servicios: List[Dict[str, str]]) -> None:
-    tarjetas_usuario = cargar_tarjetas(usuario.nombre)
-    movimientos_usuario = cargar_movimientos(usuario.nombre)
-    registrar_evento("inicio_sesion", usuario.nombre)
+def mostrar_movimientos(movimientos, usuario):
+    lista = movimientos.get(usuario, [])
+    if not lista:
+        print("No hay movimientos registrados.")
+        return
+    for movimiento in lista:
+        fecha = movimiento.get("fecha", "")
+        concepto = movimiento.get("concepto", "")
+        monto = movimiento.get("monto", "")
+        saldo = movimiento.get("saldo", "")
+        print(f"[{fecha}] {concepto} - {monto} (Saldo: {saldo})")
+
+
+def cambiar_clave(usuarios, usuario):
+    actual = input("Contraseña actual: ").strip()
+    if usuarios[usuario]["clave"] != actual:
+        print("Contraseña incorrecta.")
+        return
+    nueva = input("Nueva contraseña: ").strip()
+    if not nueva:
+        print("Debe ingresar una contraseña válida.")
+        return
+    usuarios[usuario]["clave"] = nueva
+    helpers.guardar_usuarios(usuarios)
+    print("Contraseña actualizada.")
+
+
+def principal():
+    helpers.inicializar_archivos()
+    usuarios = helpers.leer_usuarios()
+    tarjetas = helpers.leer_tarjetas()
+    movimientos = helpers.leer_movimientos()
+    servicios = helpers.leer_servicios()
+    usuario = iniciar_sesion(usuarios)
+    if usuario is None:
+        print("Hasta luego.")
+        return
     while True:
-        opcion = solicitar_opcion(MENU_PRINCIPAL)
+        opcion = mostrar_menu()
         if opcion == "1":
-            flujo_tarjetas(usuario, tarjetas_usuario)
+            saldo = helpers.formatear_monto(usuarios[usuario]["saldo"])
+            print("Saldo disponible:", saldo)
+            pausar()
         elif opcion == "2":
-            flujo_pago_servicios(usuario, tarjetas_usuario, movimientos_usuario, servicios)
+            ingresar_dinero(usuarios, movimientos, usuario)
+            pausar()
         elif opcion == "3":
-            flujo_cambio_password(usuario)
+            flujo_tarjetas(tarjetas, usuario)
         elif opcion == "4":
-            flujo_ingreso_dinero(usuario, movimientos_usuario)
+            pagar_servicio(usuarios, tarjetas, servicios, movimientos, usuario)
+            pausar()
         elif opcion == "5":
-            flujo_reportes(usuario, movimientos_usuario)
+            mostrar_movimientos(movimientos, usuario)
+            pausar()
         elif opcion == "6":
-            registrar_evento("cierre_sesion", usuario.nombre)
-            print("Hasta luego!")
+            cambiar_clave(usuarios, usuario)
+            pausar()
+        elif opcion == "7":
+            print("Hasta luego.")
             break
         else:
             print("Opción inválida.")
-
-
-def flujo_inicio() -> None:
-    while True:
-        print("\n=== Bienvenido a Kiwillet ===")
-        print("1. Crear usuario")
-        print("2. Iniciar sesión")
-        print("3. Salir")
-        opcion = input("Seleccione una opción: ").strip()
-        if opcion == "1":
-            nombre = input("Ingrese nombre de usuario: ").strip()
-            password = input("Ingrese contraseña: ").strip()
-            if not nombre or not password:
-                print("Los campos no pueden quedar vacíos.")
-                continue
-            if crear_usuario(usuarios_globales, nombre, password):
-                print("Usuario creado. Ya puede iniciar sesión.")
-            else:
-                print("El usuario ya existe.")
-        elif opcion == "2":
-            nombre = input("Usuario: ").strip()
-            password = input("Contraseña: ").strip()
-            usuario = autenticar_usuario(usuarios_globales, nombre, password)
-            if usuario:
-                servicios = cargar_servicios()
-                menu_principal(usuario, servicios)
-            else:
-                print("Credenciales inválidas.")
-        elif opcion == "3":
-            print("Gracias por utilizar Kiwillet.")
-            break
-        else:
-            print("Opción inválida.")
+            pausar()
 
 
 if __name__ == "__main__":
-    asegurar_estructura_directorios()
-    usuarios_globales = cargar_usuarios()
-    try:
-        flujo_inicio()
-    except KeyboardInterrupt:
-        print("\nSesión finalizada por el usuario.")
+    principal()
